@@ -183,7 +183,7 @@ This project was developed for **CSC455 — Game AI** at university. The primary
 ## 👤 Author
 
 **Su Shoon Lei Khaing**
-- GitHub: [@SuShoonLeiK](https://github.com/SuShoonLeiK)
+- GitHub: [@SuShoonLei](https://github.com/SuShoonLei)
 
 ---
 
