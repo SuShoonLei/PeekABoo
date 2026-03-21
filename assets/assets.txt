@@ -1,0 +1,3 @@
+guard.png
+player.png
+player_dead.png
