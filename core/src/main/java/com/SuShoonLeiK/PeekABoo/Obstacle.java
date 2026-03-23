@@ -1,10 +1,15 @@
 package com.SuShoonLeiK.PeekABoo;
 
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+
 
 public class Obstacle {
 
     public float x, y, width, height;
+
+    public static final Color FILL   = new Color(0.30f, 0.18f, 0.10f, 1f);
+    public static final Color BORDER = new Color(0.80f, 0.55f, 0.25f, 1f);
 
     public Obstacle(float x, float y, float width, float height) {
         this.x      = x;
@@ -14,12 +19,12 @@ public class Obstacle {
     }
 
     public void renderFilled(ShapeRenderer sr) {
-        sr.setColor(GameConfig.OBSTACLE_FILL);
+        sr.setColor(Obstacle.FILL);
         sr.rect(x, y, width, height);
     }
 
     public void renderOutline(ShapeRenderer sr) {
-        sr.setColor(GameConfig.OBSTACLE_BORDER);
+        sr.setColor(Obstacle.BORDER);
         sr.rect(x, y, width, height);
     }
 

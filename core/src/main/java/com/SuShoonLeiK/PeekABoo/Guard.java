@@ -27,6 +27,16 @@ public class Guard {
 
     private final Texture texAlien;   // guard.png
 
+    public static final float RADIUS       =  14f;
+    public static final float PATROL_SPEED =  45f;
+    public static final float CHASE_SPEED  =  90f;
+    public static final float RETURN_SPEED =  65f;
+    public static final float FOV_HALF     =  60f;
+    public static final float FOV_RANGE    = 130f;
+    public static final Color FOV_PATROL   = new Color(1f, 1f,   0f,   0.22f);
+    public static final Color FOV_CHASE    = new Color(1f, 0f,   0f,   0.30f);
+    public static final Color FOV_RETURN   = new Color(1f, 0.5f, 0f,   0.22f);
+
     public Guard(float x, float y, float facingAngle) {
         position     = new Vector2(x, y);
         homePos      = new Vector2(x, y);
@@ -43,7 +53,7 @@ public class Guard {
     }
 
     private void updatePatrol(float delta, Player player) {
-        angle += patrolDir * GameConfig.GUARD_PATROL_SPEED * delta;
+        angle += patrolDir * Guard.PATROL_SPEED * delta;
         if (angle > patrolCenter + patrolRange) {
             angle = patrolCenter + patrolRange; patrolDir = -1f;
         } else if (angle < patrolCenter - patrolRange) {
@@ -59,13 +69,13 @@ public class Guard {
         angle = (float) Math.toDegrees(Math.atan2(dy, dx));
 
         if (dist > catchDist) {
-            position.x += (dx / dist) * GameConfig.GUARD_CHASE_SPEED * delta;
-            position.y += (dy / dist) * GameConfig.GUARD_CHASE_SPEED * delta;
+            position.x += (dx / dist) * Guard.CHASE_SPEED * delta;
+            position.y += (dy / dist) * Guard.CHASE_SPEED * delta;
         } else {
             player.caught = true;
         }
 
-        if (!canSeePlayer(player) && dist > GameConfig.GUARD_FOV_RANGE * 1.2f) {
+        if (!canSeePlayer(player) && dist > Guard.FOV_RANGE * 1.2f) {
             state = State.RETURN;
         }
     }
@@ -76,8 +86,8 @@ public class Guard {
         float dist = (float) Math.sqrt(dx * dx + dy * dy);
         if (dist > 2f) {
             angle = (float) Math.toDegrees(Math.atan2(dy, dx));
-            position.x += (dx / dist) * GameConfig.GUARD_RETURN_SPEED * delta;
-            position.y += (dy / dist) * GameConfig.GUARD_RETURN_SPEED * delta;
+            position.x += (dx / dist) * Guard.RETURN_SPEED * delta;
+            position.y += (dy / dist) * Guard.RETURN_SPEED * delta;
         } else {
             position.set(homePos);
             angle = homeAngle;
@@ -89,9 +99,9 @@ public class Guard {
         float dx   = player.position.x - position.x;
         float dy   = player.position.y - position.y;
         float dist = (float) Math.sqrt(dx * dx + dy * dy);
-        if (dist > GameConfig.GUARD_FOV_RANGE) return false;
+        if (dist > Guard.FOV_RANGE) return false;
         float ap = (float) Math.toDegrees(Math.atan2(dy, dx));
-        return Math.abs(angleDiff(ap, angle)) <= GameConfig.GUARD_FOV_HALF;
+        return Math.abs(angleDiff(ap, angle)) <= Guard.FOV_HALF;
     }
 
     private float angleDiff(float a, float b) {
@@ -104,36 +114,36 @@ public class Guard {
     /** Draw the FOV cone — call inside a Filled ShapeRenderer pass. */
     public void renderFOV(ShapeRenderer sr) {
         Color fovColor;
-        if      (state == State.CHASE)  fovColor = GameConfig.GUARD_FOV_CHASE;
-        else if (state == State.RETURN) fovColor = GameConfig.GUARD_FOV_RETURN;
-        else                            fovColor = GameConfig.GUARD_FOV_PATROL;
+        if      (state == State.CHASE)  fovColor = Guard.FOV_CHASE;
+        else if (state == State.RETURN) fovColor = Guard.FOV_RETURN;
+        else                            fovColor = Guard.FOV_PATROL;
 
         sr.setColor(fovColor);
         int   steps = 24;
-        float step  = (GameConfig.GUARD_FOV_HALF * 2f) / steps;
-        float start = angle - GameConfig.GUARD_FOV_HALF;
+        float step  = (Guard.FOV_HALF * 2f) / steps;
+        float start = angle - Guard.FOV_HALF;
         for (int i = 0; i < steps; i++) {
             float a1 = (float) Math.toRadians(start + i * step);
             float a2 = (float) Math.toRadians(start + (i + 1) * step);
             sr.triangle(
                 position.x, position.y,
-                position.x + (float) Math.cos(a1) * GameConfig.GUARD_FOV_RANGE,
-                position.y + (float) Math.sin(a1) * GameConfig.GUARD_FOV_RANGE,
-                position.x + (float) Math.cos(a2) * GameConfig.GUARD_FOV_RANGE,
-                position.y + (float) Math.sin(a2) * GameConfig.GUARD_FOV_RANGE
+                position.x + (float) Math.cos(a1) * Guard.FOV_RANGE,
+                position.y + (float) Math.sin(a1) * Guard.FOV_RANGE,
+                position.x + (float) Math.cos(a2) * Guard.FOV_RANGE,
+                position.y + (float) Math.sin(a2) * Guard.FOV_RANGE
             );
         }
 
         // Edge lines
         sr.setColor(fovColor.r, fovColor.g, fovColor.b, 0.75f);
-        float lRad = (float) Math.toRadians(angle - GameConfig.GUARD_FOV_HALF);
-        float rRad = (float) Math.toRadians(angle + GameConfig.GUARD_FOV_HALF);
+        float lRad = (float) Math.toRadians(angle - Guard.FOV_HALF);
+        float rRad = (float) Math.toRadians(angle + Guard.FOV_HALF);
         sr.line(position.x, position.y,
-            position.x + (float) Math.cos(lRad) * GameConfig.GUARD_FOV_RANGE,
-            position.y + (float) Math.sin(lRad) * GameConfig.GUARD_FOV_RANGE);
+            position.x + (float) Math.cos(lRad) * Guard.FOV_RANGE,
+            position.y + (float) Math.sin(lRad) * Guard.FOV_RANGE);
         sr.line(position.x, position.y,
-            position.x + (float) Math.cos(rRad) * GameConfig.GUARD_FOV_RANGE,
-            position.y + (float) Math.sin(rRad) * GameConfig.GUARD_FOV_RANGE);
+            position.x + (float) Math.cos(rRad) * Guard.FOV_RANGE,
+            position.y + (float) Math.sin(rRad) * Guard.FOV_RANGE);
     }
 
     /** Draw the alien sprite — call inside a SpriteBatch pass. */
