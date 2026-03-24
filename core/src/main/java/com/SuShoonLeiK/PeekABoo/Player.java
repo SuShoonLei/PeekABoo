@@ -14,6 +14,9 @@ public class Player {
     public boolean caught      = false;
     public boolean beingChased = false;
 
+    public static final float SPEED  = 120f;
+    public static final float RADIUS =  14f;
+
     private static final float SPRITE_SIZE = 38f;
 
     private final Building       building;
@@ -44,8 +47,8 @@ public class Player {
             dy /= len;
             angle = (float) Math.toDegrees(Math.atan2(dy, dx));
 
-            float r   = GameConfig.PLAYER_RADIUS;
-            float spd = GameConfig.PLAYER_SPEED;
+            float r   = Player.RADIUS;
+            float spd = Player.SPEED;
             float sw  = Gdx.graphics.getWidth();
             float sh  = Gdx.graphics.getHeight();
 
@@ -87,4 +90,6 @@ public class Player {
         texNormal.dispose();
         texScared.dispose();
     }
+
+
 }
