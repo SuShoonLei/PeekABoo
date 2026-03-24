@@ -57,8 +57,8 @@ public class GameScreen implements Screen {
         H = Gdx.graphics.getHeight();
 
         // Building centered
-        float bw = GameConfig.BUILDING_WIDTH;
-        float bh = GameConfig.BUILDING_HEIGHT;
+        float bw = Building.WIDTH;
+        float bh = Building.HEIGHT;
         float bx = (W - bw) / 2f;
         float by = (H - bh) / 2f;
         building = new Building(bx, by, bw, bh);
