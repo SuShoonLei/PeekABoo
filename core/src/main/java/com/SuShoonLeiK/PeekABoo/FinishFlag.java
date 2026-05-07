@@ -9,7 +9,7 @@ public class FinishFlag {
     public final Vector2 position;
     private float pulseTimer = 0f;
 
-    public static final float RADIUS = 28f;
+    public static final float RADIUS = 15f;
     public static final Color COLOR  = new Color(0.10f, 0.90f, 0.30f, 1f);
     public static final Color PULSE  = new Color(0.10f, 1.00f, 0.50f, 0.3f);
 
@@ -23,7 +23,7 @@ public class FinishFlag {
 
     public void render(ShapeRenderer sr) {
         // Pulsing outer glow ring
-        float pulse = (float) Math.sin(pulseTimer * 3f) * 0.5f + 0.5f;
+        float pulse = (float) Math.sin(pulseTimer * 3f) * 0.5f + 0.5f; //sine wave
         float outerR = FinishFlag.RADIUS + 8f + pulse * 6f;
         sr.setColor(FinishFlag.PULSE.r, FinishFlag.PULSE.g,
             FinishFlag.PULSE.b, 0.25f + pulse * 0.2f);

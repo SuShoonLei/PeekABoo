@@ -28,7 +28,7 @@ public class Obstacle {
         sr.rect(x, y, width, height);
     }
 
-    /** Circle-vs-AABB overlap — used for player + guard collision. */
+    // Circle-vs-AABB overlap for player + guard collision.
     public boolean overlaps(float px, float py, float radius) {
         float nx = Math.max(x, Math.min(px, x + width));
         float ny = Math.max(y, Math.min(py, y + height));

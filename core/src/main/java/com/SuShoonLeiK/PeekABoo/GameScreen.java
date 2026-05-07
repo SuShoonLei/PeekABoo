@@ -85,7 +85,7 @@ public class GameScreen implements Screen {
         // Guard top-right corner of building
         float gx = bx + bw + 16f;
         float gy = by + bh + 16f;
-        guard = new Guard(gx, gy, 45f);
+        guard = new Guard(gx, gy, 45f, building, obstacles);
 
         gameState = GameState.START;
     }

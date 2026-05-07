@@ -5,27 +5,41 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.math.Intersector;
+import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+
+import java.util.List;
 
 public class Guard {
 
     public enum State { PATROL, CHASE, RETURN }
 
-    public State   state    = State.PATROL;
+    public State   state = State.PATROL;
     public Vector2 position;
+    public Vector2 velocity = new Vector2(0, 0);
+    public float   maxAcceleration = 200f;
     public float   angle;
 
     private static final float SPRITE_SIZE = 44f;
 
-    private final float patrolCenter;
-    private final float patrolRange = 135f;
-    private       float patrolDir   =   1f;
-    private final float catchDist   =  20f;
+    private static final float ARRIVE_SLOW_RADIUS = 60f;
+
+    /** Total patrol width left–right of home (~120 units, within 100–130). */
+    private static final float PATROL_HALFWIDTH   = 60f;
+    private static final float PATROL_SWITCH_DIST = 10f;
+
+    private final float catchDist = 20f;
 
     private final float   homeAngle;
     private final Vector2 homePos;
 
-    private final Texture texAlien;   // guard.png
+    private final Vector2 patrolWest = new Vector2();
+    private final Vector2 patrolEast = new Vector2();
+    private       int     patrolTargetIndex = 0;
+
+    private final Texture texAlien;
 
     public static final float RADIUS       =  14f;
     public static final float PATROL_SPEED =  45f;
@@ -37,13 +51,32 @@ public class Guard {
     public static final Color FOV_CHASE    = new Color(1f, 0f,   0f,   0.30f);
     public static final Color FOV_RETURN   = new Color(1f, 0.5f, 0f,   0.22f);
 
-    public Guard(float x, float y, float facingAngle) {
+    private final Building       building;
+    private final List<Obstacle> obstacles;
+
+    private float chaseFxPhase = 0f;
+
+    private final Vector2 desiredTmp  = new Vector2();
+    private final Vector2 steeringTmp = new Vector2();
+    private final Vector2 futureTmp   = new Vector2();
+
+    private final Rectangle losRect = new Rectangle();
+    private final Vector2   losP1   = new Vector2();
+    private final Vector2   losP2   = new Vector2();
+
+    public Guard(float x, float y, float facingAngle,
+                 Building building, List<Obstacle> obstacles) {
         position     = new Vector2(x, y);
         homePos      = new Vector2(x, y);
         angle        = facingAngle;
         homeAngle    = facingAngle;
-        patrolCenter = facingAngle;
         texAlien     = new Texture(Gdx.files.internal("guard.png"));
+
+        this.building  = building;
+        this.obstacles = obstacles;
+
+        patrolWest.set(homePos.x - PATROL_HALFWIDTH, homePos.y);
+        patrolEast.set(homePos.x + PATROL_HALFWIDTH, homePos.y);
     }
 
     public void update(float delta, Player player) {
@@ -52,47 +85,129 @@ public class Guard {
         else                            updateReturn(delta);
     }
 
-    private void updatePatrol(float delta, Player player) {
-        angle += patrolDir * Guard.PATROL_SPEED * delta;
-        if (angle > patrolCenter + patrolRange) {
-            angle = patrolCenter + patrolRange; patrolDir = -1f;
-        } else if (angle < patrolCenter - patrolRange) {
-            angle = patrolCenter - patrolRange; patrolDir =  1f;
+    private void applySteeringDesired(Vector2 desiredVel, float maxSpeed, float delta) {
+        steeringTmp.set(desiredVel).sub(velocity);
+        float cap = maxAcceleration * delta;
+        if (steeringTmp.len2() > cap * cap) {
+            steeringTmp.setLength(cap);
         }
-        if (canSeePlayer(player)) state = State.CHASE;
+        velocity.add(steeringTmp);
+        if (velocity.len2() > maxSpeed * maxSpeed) {
+            velocity.setLength(maxSpeed);
+        }
+    }
+
+    private void steerSeek(Vector2 target, float maxSpeed, float delta) {
+        desiredTmp.set(target).sub(position);
+        if (desiredTmp.len2() < 1e-8f) {
+            desiredTmp.setZero();
+        } else {
+            desiredTmp.nor().scl(maxSpeed);
+        }
+        applySteeringDesired(desiredTmp, maxSpeed, delta);
+    }
+
+    private void integratePosition(float delta) {
+        position.add(velocity.x * delta, velocity.y * delta);
+        clampPositionAndVelocity();
+    }
+
+    /** Keeps the guard on-screen; damps velocity into hard edges so momentum cannot push them off-map. */
+    private void clampPositionAndVelocity() {
+        float r = Guard.RADIUS;
+        float w = Gdx.graphics.getWidth();
+        float h = Gdx.graphics.getHeight();
+        float minX = r;
+        float maxX = w - r;
+        float minY = r;
+        float maxY = h - r;
+
+        if (position.x < minX) {
+            position.x = minX;
+            velocity.x = Math.min(0f, velocity.x);
+        } else if (position.x > maxX) {
+            position.x = maxX;
+            velocity.x = Math.max(0f, velocity.x);
+        }
+        if (position.y < minY) {
+            position.y = minY;
+            velocity.y = Math.min(0f, velocity.y);
+        } else if (position.y > maxY) {
+            position.y = maxY;
+            velocity.y = Math.max(0f, velocity.y);
+        }
+    }
+
+    private void syncFacingFromVelocity() {
+        if (velocity.len2() > 1f) {
+            angle = (float) Math.toDegrees(Math.atan2(velocity.y, velocity.x));
+        }
+    }
+
+    private void updatePatrol(float delta, Player player) {
+        Vector2 wp = (patrolTargetIndex == 0) ? patrolWest : patrolEast;
+        if (position.dst(wp) < PATROL_SWITCH_DIST) {
+            patrolTargetIndex = 1 - patrolTargetIndex;
+            wp = (patrolTargetIndex == 0) ? patrolWest : patrolEast;
+        }
+
+        steerSeek(wp, Guard.PATROL_SPEED, delta);
+        integratePosition(delta);
+        syncFacingFromVelocity();
+
+        if (canSeePlayer(player) && hasClearLineOfSight(player)) {
+            state = State.CHASE;
+        }
     }
 
     private void updateChase(float delta, Player player) {
+        if (!hasClearLineOfSight(player)) {
+            state = State.RETURN;
+            return;
+        }
+
+        chaseFxPhase += delta * 10f;
+
+        float distGp = position.dst(player.position);
+        float T = distGp / Guard.CHASE_SPEED;
+        futureTmp.set(player.velocity).scl(T).add(player.position);
+
+        steerSeek(futureTmp, Guard.CHASE_SPEED, delta);
+        integratePosition(delta);
+        syncFacingFromVelocity();
+
         float dx   = player.position.x - position.x;
         float dy   = player.position.y - position.y;
         float dist = (float) Math.sqrt(dx * dx + dy * dy);
-        angle = (float) Math.toDegrees(Math.atan2(dy, dx));
-
-        if (dist > catchDist) {
-            position.x += (dx / dist) * Guard.CHASE_SPEED * delta;
-            position.y += (dy / dist) * Guard.CHASE_SPEED * delta;
-        } else {
+        if (dist <= catchDist) {
             player.caught = true;
-        }
-
-        if (!canSeePlayer(player) && dist > Guard.FOV_RANGE * 1.2f) {
-            state = State.RETURN;
         }
     }
 
     private void updateReturn(float delta) {
-        float dx   = homePos.x - position.x;
-        float dy   = homePos.y - position.y;
-        float dist = (float) Math.sqrt(dx * dx + dy * dy);
-        if (dist > 2f) {
-            angle = (float) Math.toDegrees(Math.atan2(dy, dx));
-            position.x += (dx / dist) * Guard.RETURN_SPEED * delta;
-            position.y += (dy / dist) * Guard.RETURN_SPEED * delta;
-        } else {
+        float dist = position.dst(homePos);
+        if (dist <= 2f) {
             position.set(homePos);
+            velocity.setZero();
             angle = homeAngle;
             state = State.PATROL;
+            clampPositionAndVelocity();
+            return;
         }
+
+        float desiredSpeed = (dist < ARRIVE_SLOW_RADIUS)
+            ? Guard.RETURN_SPEED * (dist / ARRIVE_SLOW_RADIUS)
+            : Guard.RETURN_SPEED;
+
+        desiredTmp.set(homePos).sub(position);
+        if (dist < 1e-5f) {
+            desiredTmp.setZero();
+        } else {
+            desiredTmp.nor().scl(desiredSpeed);
+        }
+        applySteeringDesired(desiredTmp, Guard.RETURN_SPEED, delta);
+        integratePosition(delta);
+        syncFacingFromVelocity();
     }
 
     public boolean canSeePlayer(Player player) {
@@ -104,6 +219,35 @@ public class Guard {
         return Math.abs(angleDiff(ap, angle)) <= Guard.FOV_HALF;
     }
 
+    /**
+     * True if an unobstructed segment exists from the guard to the player
+     * (building and obstacles block; FOV is not required here — used while chasing).
+     */
+    public boolean hasClearLineOfSight(Player player) {
+        float dx = player.position.x - position.x;
+        float dy = player.position.y - position.y;
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len < 1e-4f) {
+            return true;
+        }
+        dx /= len;
+        dy /= len;
+        losP1.set(position.x + dx * RADIUS, position.y + dy * RADIUS);
+        losP2.set(player.position.x - dx * Player.RADIUS, player.position.y - dy * Player.RADIUS);
+
+        losRect.set(building.x, building.y, building.width, building.height);
+        if (Intersector.intersectSegmentRectangle(losP1, losP2, losRect)) {
+            return false;
+        }
+        for (Obstacle o : obstacles) {
+            losRect.set(o.x, o.y, o.width, o.height);
+            if (Intersector.intersectSegmentRectangle(losP1, losP2, losRect)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private float angleDiff(float a, float b) {
         float d = a - b;
         while (d >  180f) d -= 360f;
@@ -111,14 +255,17 @@ public class Guard {
         return d;
     }
 
-    /** Draw the FOV cone — call inside a Filled ShapeRenderer pass. */
     public void renderFOV(ShapeRenderer sr) {
         Color fovColor;
         if      (state == State.CHASE)  fovColor = Guard.FOV_CHASE;
         else if (state == State.RETURN) fovColor = Guard.FOV_RETURN;
         else                            fovColor = Guard.FOV_PATROL;
 
-        sr.setColor(fovColor);
+        float chasePulse = (state == State.CHASE)
+            ? 0.78f + 0.22f * MathUtils.sin(chaseFxPhase)
+            : 1f;
+
+        sr.setColor(fovColor.r, fovColor.g, fovColor.b, fovColor.a * chasePulse);
         int   steps = 24;
         float step  = (Guard.FOV_HALF * 2f) / steps;
         float start = angle - Guard.FOV_HALF;
@@ -133,9 +280,7 @@ public class Guard {
                 position.y + (float) Math.sin(a2) * Guard.FOV_RANGE
             );
         }
-
-        // Edge lines
-        sr.setColor(fovColor.r, fovColor.g, fovColor.b, 0.75f);
+        sr.setColor(fovColor.r, fovColor.g, fovColor.b, 0.75f * chasePulse);
         float lRad = (float) Math.toRadians(angle - Guard.FOV_HALF);
         float rRad = (float) Math.toRadians(angle + Guard.FOV_HALF);
         sr.line(position.x, position.y,
@@ -146,7 +291,6 @@ public class Guard {
             position.y + (float) Math.sin(rRad) * Guard.FOV_RANGE);
     }
 
-    /** Draw the alien sprite — call inside a SpriteBatch pass. */
     public void renderSprite(SpriteBatch batch) {
         float half = SPRITE_SIZE / 2f;
         batch.draw(
@@ -156,16 +300,14 @@ public class Guard {
             half, half,
             SPRITE_SIZE, SPRITE_SIZE,
             1f, 1f,
-            angle - 90f,              // rotate to face movement direction
+            angle - 90f,
             0, 0,
             texAlien.getWidth(), texAlien.getHeight(),
             false, false
         );
     }
 
-    public void dispose() {
-        texAlien.dispose();
-    }
+    public void dispose() { texAlien.dispose(); }
 
     public State getState() { return state; }
 }

@@ -10,6 +10,8 @@ import java.util.List;
 public class Player {
 
     public Vector2 position;
+    public Vector2 velocity = new Vector2(0, 0);
+    public float   maxAcceleration = 300f;
     public float   angle       = 90f;
     public boolean caught      = false;
     public boolean beingChased = false;
@@ -24,6 +26,8 @@ public class Player {
     private final Texture        texNormal;
     private final Texture        texScared;
 
+    private final Vector2 tmpDesired = new Vector2();
+
     public Player(float x, float y, Building building, List<Obstacle> obstacles) {
         this.position  = new Vector2(x, y);
         this.building  = building;
@@ -33,35 +37,52 @@ public class Player {
     }
 
     public void update(float delta) {
-        if (caught) return;
+        if (caught) {
+            velocity.setZero();
+            return;
+        }
 
-        float dx = 0, dy = 0;
-        if (Gdx.input.isKeyPressed(Input.Keys.LEFT))  dx -= 1;
-        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) dx += 1;
-        if (Gdx.input.isKeyPressed(Input.Keys.UP))    dy += 1;
-        if (Gdx.input.isKeyPressed(Input.Keys.DOWN))  dy -= 1;
+        float ix = 0, iy = 0;
+        if (Gdx.input.isKeyPressed(Input.Keys.LEFT))  ix -= 1;
+        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) ix += 1;
+        if (Gdx.input.isKeyPressed(Input.Keys.UP))    iy += 1;
+        if (Gdx.input.isKeyPressed(Input.Keys.DOWN))  iy -= 1;
 
-        if (dx != 0 || dy != 0) {
-            float len = (float) Math.sqrt(dx * dx + dy * dy);
-            dx /= len;
-            dy /= len;
-            angle = (float) Math.toDegrees(Math.atan2(dy, dx));
+        if (ix != 0 || iy != 0) {
+            float ilen = (float) Math.sqrt(ix * ix + iy * iy);
+            ix /= ilen;
+            iy /= ilen;
+        }
+        tmpDesired.set(ix * SPEED, iy * SPEED);
 
-            float r   = Player.RADIUS;
-            float spd = Player.SPEED;
-            float sw  = Gdx.graphics.getWidth();
-            float sh  = Gdx.graphics.getHeight();
+        tmpDesired.sub(velocity);
+        float cap = maxAcceleration * delta;
+        if (tmpDesired.len2() > cap * cap) {
+            tmpDesired.setLength(cap);
+        }
+        velocity.add(tmpDesired);
 
-            float newX = Math.max(r, Math.min(sw - r, position.x + dx * spd * delta));
-            float newY = Math.max(r, Math.min(sh - r, position.y + dy * spd * delta));
+        if (velocity.len2() > SPEED * SPEED) {
+            velocity.setLength(SPEED);
+        }
 
-            if (canMoveTo(newX, newY, r)) {
-                position.set(newX, newY);
-            } else if (canMoveTo(newX, position.y, r)) {
-                position.x = newX;
-            } else if (canMoveTo(position.x, newY, r)) {
-                position.y = newY;
-            }
+        if (velocity.len2() > 1f) {
+            angle = (float) Math.toDegrees(Math.atan2(velocity.y, velocity.x));
+        }
+
+        float r   = Player.RADIUS;
+        float sw  = Gdx.graphics.getWidth();
+        float sh  = Gdx.graphics.getHeight();
+
+        float newX = Math.max(r, Math.min(sw - r, position.x + velocity.x * delta));
+        float newY = Math.max(r, Math.min(sh - r, position.y + velocity.y * delta));
+
+        if (canMoveTo(newX, newY, r)) {
+            position.set(newX, newY);
+        } else if (canMoveTo(newX, position.y, r)) {
+            position.x = newX;
+        } else if (canMoveTo(position.x, newY, r)) {
+            position.y = newY;
         }
     }
 
